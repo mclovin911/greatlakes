@@ -162,7 +162,166 @@ pairs(~loglik+Beta+eta+rho,data=results,pch=16)
 
 ```
 
+Then, we want to do a global search of the likelihood surface.
 
+```{r}
+set.seed(2062379496)
+
+runif_design(
+  lower=c(Beta=5,rho=0.2,eta=0),
+  upper=c(Beta=80,rho=0.9,eta=0.4),
+  nseq=300
+) -> guesses
+
+mf1 <- mifs_local[[1]]
+
+bake(file="global_search.rds",{
+  registerDoRNG(1270401374)
+  foreach(guess=iter(guesses,"row"), .combine=rbind) %dopar% {
+    library(pomp)
+    library(tidyverse)
+    mf1 %>%
+      mif2(params=c(unlist(guess),fixed_params)) %>%
+      mif2(Nmif=100) -> mf
+    replicate(
+      10,
+      mf %>% pfilter(Np=100000) %>% logLik()
+    ) %>%
+      logmeanexp(se=TRUE) -> ll
+    mf %>% coef() %>% bind_rows() %>%
+      bind_cols(loglik=ll[1],loglik.se=ll[2])
+  } -> results
+  attr(results,"ncpu") <- getDoParWorkers()
+  results
+}) %>%
+  filter(is.finite(loglik)) -> results
+
+read_csv("measles_params.csv") %>%
+  bind_rows(results) %>%
+  filter(is.finite(loglik)) %>%
+  arrange(-loglik) %>%
+  write_csv("measles_params.csv")
+
+read_csv("measles_params.csv") %>%
+  filter(loglik>max(loglik)-50) %>%
+  bind_rows(guesses) %>%
+  mutate(type=if_else(is.na(loglik),"guess","result")) %>%
+  arrange(type) -> all
+
+pairs(~loglik+Beta+eta+rho, data=all,
+      col=ifelse(all$type=="guess",grey(0.5),"red"),pch=16)
+
+read_csv("measles_params.csv") %>%
+  filter(loglik>max(loglik)-20,loglik.se<2) %>%
+  sapply(range) -> box
+
+set.seed(1196696958)
+profile_design(
+  eta=seq(0.01,0.85,length=40),
+  lower=box[1,c("Beta","rho")],
+  upper=box[2,c("Beta","rho")],
+  nprof=15, type="runif"
+) -> guesses
+
+mf1 <- mifs_local[[1]]
+registerDoRNG(830007657)
+bake(file="eta_profile.rds",{
+  foreach(guess=iter(guesses,"row"), .combine=rbind) %dopar% {
+    library(pomp)
+    library(tidyverse)
+    mf1 %>%
+      mif2(params=c(unlist(guess),fixed_params),
+           rw.sd=rw.sd(Beta=0.02,rho=0.02)) %>%
+      mif2(Nmif=100,cooling.fraction.50=0.3) -> mf
+    replicate(
+      10,
+      mf %>% pfilter(Np=100000) %>% logLik()) %>%
+      logmeanexp(se=TRUE) -> ll
+    mf %>% coef() %>% bind_rows() %>%
+      bind_cols(loglik=ll[1],loglik.se=ll[2])
+  } -> results
+  attr(results,"ncpu") <- getDoParWorkers()
+  results
+}) -> results
+
+read_csv("measles_params.csv") %>%
+  bind_rows(results) %>%
+  filter(is.finite(loglik)) %>%
+  arrange(-loglik) %>%
+  write_csv("measles_params.csv")
+
+read_csv("measles_params.csv") %>%
+  filter(loglik>max(loglik)-10) -> all
+
+pairs(~loglik+Beta+eta+rho,data=all,pch=16)
+
+maxloglik <- max(results$loglik,na.rm=TRUE)
+ci.cutoff <- maxloglik-0.5*qchisq(df=1,p=0.95)
+
+results %>%
+  filter(is.finite(loglik)) %>%
+  group_by(round(eta,5)) %>%
+  filter(rank(-loglik)<3) %>%
+  ungroup() %>%
+  ggplot(aes(x=eta,y=loglik))+
+  geom_point()+
+  geom_smooth(method="loess",span=0.25)+
+  geom_hline(color="red",yintercept=ci.cutoff)+
+  lims(y=maxloglik-c(5,0))
+
+read_csv("measles_params.csv") %>%
+  group_by(cut=round(rho,2)) %>%
+  filter(rank(-loglik)<=10) %>%
+  ungroup() %>%
+  select(-cut,-loglik,-loglik.se) -> guesses
+
+mf1 <- mifs_local[[1]]
+registerDoRNG(2105684752)
+bake(file="rho_profile.rds",{
+  foreach(guess=iter(guesses,"row"), .combine=rbind) %dopar% {
+    library(pomp)
+    library(tidyverse)
+    mf1 %>%
+      mif2(params=guess,
+           rw.sd=rw.sd(Beta=0.02,eta=ivp(0.02))) %>%
+      mif2(Nmif=100,cooling.fraction.50=0.3) %>%
+      mif2() -> mf
+    replicate(
+      10,
+      mf %>% pfilter(Np=100000) %>% logLik()) %>%
+      logmeanexp(se=TRUE) -> ll
+    mf %>% coef() %>% bind_rows() %>%
+      bind_cols(loglik=ll[1],loglik.se=ll[2])
+  } -> results
+  attr(results,"ncpu") <- getDoParWorkers()
+  results
+}) -> results
+
+read_csv("measles_params.csv") %>%
+  bind_rows(results) %>%
+  filter(is.finite(loglik)) %>%
+  arrange(-loglik) %>%
+  write_csv("measles_params.csv")
+
+results %>%
+  filter(is.finite(loglik)) -> results
+
+pairs(~loglik+Beta+eta+rho,data=results,pch=16)
+
+results %>%
+  filter(loglik>max(loglik)-10,loglik.se<1) %>%
+  group_by(round(rho,2)) %>%
+  filter(rank(-loglik)<3) %>%
+  ungroup() %>%
+  ggplot(aes(x=rho,y=loglik))+
+  geom_point()+
+  geom_hline(
+    color="red",
+    yintercept=max(results$loglik)-0.5*qchisq(df=1,p=0.95)
+  )
+
+
+```
 
 
 ----------
