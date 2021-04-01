@@ -56,6 +56,7 @@ We consider an SEIR model for the Consett measles epidemic, which is the same mo
 
 As before, we download the data and implement pomp in C snippets.
 
+a) First we do a local search start with the given parameter values.
 ```{r}
 library(foreach)
 library(doParallel)
@@ -116,6 +117,48 @@ foreach(i=1:10,.combine=c) %dopar% {
 
 pf %>% logLik() %>% logmeanexp(se=TRUE) -> L_pf
 L_pf
+
+registerDoRNG(482947940)
+bake(file="local_search.rds",{
+  foreach(i=1:20,.combine=c) %dopar% {
+    library(pomp)
+    library(tidyverse)
+    measSIR %>%
+      mif2(
+        params=params,
+        Np=2000, Nmif=50,
+        cooling.fraction.50=0.5,
+        rw.sd=rw.sd(Beta=0.02, rho=0.02, eta=ivp(0.02))
+      )
+  } -> mifs_local
+  attr(mifs_local,"ncpu") <- getDoParWorkers()
+  mifs_local
+}) -> mifs_local
+
+mifs_local %>%
+  traces() %>%
+  melt() %>%
+  ggplot(aes(x=iteration,y=value,group=L1,color=factor(L1)))+
+  geom_line()+
+  guides(color=FALSE)+
+  facet_wrap(~variable,scales="free_y")
+
+registerDoRNG(900242057)
+bake(file="lik_local.rds",{
+  foreach(mf=mifs_local,.combine=rbind) %dopar% {
+    library(pomp)
+    library(tidyverse)
+    evals <- replicate(10, logLik(pfilter(mf,Np=20000)))
+    ll <- logmeanexp(evals,se=TRUE)
+    mf %>% coef() %>% bind_rows() %>%
+      bind_cols(loglik=ll[1],loglik.se=ll[2])
+  } -> results
+  attr(results,"ncpu") <- getDoParWorkers()
+  results
+}) -> results
+
+pairs(~loglik+Beta+eta+rho,data=results,pch=16)
+
 
 ```
 
