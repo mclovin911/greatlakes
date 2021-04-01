@@ -1,0 +1,19 @@
+
+This version of R is a base installation only, with no additional
+libraries. The gcc/8.2.0 compiler is being automatically loaded. See
+module help for more information. The gcc/8.2.0 compiler is required in
+order to be able to load additional libraries for your use. If you unload
+the gcc module, you will not be able to install new libraries for R.
+
+
+
+Currently Loaded Modules:
+  1) gcc/8.2.0   2) R/3.6.1
+
+ 
+
+Running on gl3150
+Running in /home/weixw/greatlakes/multi-core_test
+Loading required package: foreach
+Loading required package: iterators
+Loading required package: parallel
