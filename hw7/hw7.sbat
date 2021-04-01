@@ -27,5 +27,5 @@ module list
 echo "Running on $SLURM_JOB_NODELIST"
 echo "Running in $(pwd)"
 
-Rscript --vanilla hw07.Rmd
+Rscript -e "rmarkdown::render('hw07.Rmd')"
 
