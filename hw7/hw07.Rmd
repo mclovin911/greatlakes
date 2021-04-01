@@ -1,0 +1,144 @@
+---
+title: "Homework 7"
+author: Xingwen Wei
+output:
+  html_document
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\data[1]{#1^*}
+
+--------
+
+
+
+
+
+### Homework questions
+
+Please submit your homework report to Canvas as both an Rmarkdown (Rmd) file and an html file produced by it. This week, the grader will not run the Rmd file. Next week, we will learn a way to write a reproducible document including computationally intensive results. 
+
+------------
+
+**<big>Question 7.1</big>. Introduction to the greatlakes cluster.**
+
+The greatlakes cluster is a collection of high-performance Linux machines operated by University of Michigan. Each machine has 36 CPU cores. This facilitates computationally intensive Monte Carlo statistical inference, allowing more thorough investigations than are possible on a laptop. Linux cluster computing is the standard platform for computationally intensive statistics and data science, so experience working with them is worthwhile.
+
+Using greatlakes is optional for your STATS/DATASCI 531 final project. However, you may find that once you have run a simple parallel R command, following the instructions below, it is fairly straightforward to run the code for your project.
+
+Read the [greatlakes notes on the course website](../greatlakes/index.html) and work through the example to run the parallel foreach in the file [test.R](../greatlakes/test.R) on greatlakes. If you are already familiar with greatlakes, Question 7.1 may be trivial, otherwise it is a good experience.
+
+
+Have you used a Linux cluster before? Report briefly on whether you successfully ran the test code. Mention any issues that you had to overcome. 
+
+**Answer 7.1**
+
+I have used remote Linux server before. I have successfully ran the test code on greatlakes. There was no difficulties.
+
+----------
+
+**<big>Question 7.2</big>. Investigating the SEIR model.**
+
+We consider an SEIR model for the Consett measles epidemic, which is the same model and data used for Homework 6. Write a report presenting the following steps. You will need to tailor the intensity of your search to the computational resources at your disposal. In particular, choose the number of starting points, number of particles employed, and the number of IF2 iterations appropriately for the size and speed of your machine. It is okay for this homework if the Monte Carlo error is larger than you would like. Optionally, you can run this on greatlakes. Whether you run it on greatlakes or a laptop or some other machine, your code should take advantage of multiple processors.
+
+(a) Conduct a local search and then a global search using the multi-stage, multi-start method.
+
+(b) How does the maximized likelihood for the SEIR model compare with what we obtained for the SIR model?
+
+(c) How do the parameter estimates differ?
+
+(d) Calculate and plot a profile likelihood over the reporting rate for the SEIR model. Construct a 95% confidence interval for the reporting rate, and discuss how this profile compares with the SIR profile in Chapter 14.
+
+**Answer 7.2**
+
+As before, we download the data and implement pomp in C snippets.
+
+```{r}
+library(foreach)
+library(doParallel)
+registerDoParallel()
+
+library(doRNG)
+registerDoParallel()
+registerDoRNG(2488820)
+library(tidyverse)
+library(pomp)
+
+read_csv(paste0("https://kingaa.github.io/sbied/stochsim/",
+                "Measles_Consett_1948.csv")) %>%
+    select(week,reports=cases) -> meas
+
+sir_step <- Csnippet("
+  double dN_SI = rbinom(S,1-exp(-Beta*I/N*dt));
+  double dN_IR = rbinom(I,1-exp(-mu_IR*dt));
+  S -= dN_SI;
+  I += dN_SI - dN_IR;
+  H += dN_IR;
+  ")
+
+sir_rinit <- Csnippet("
+  S = nearbyint(eta*N);
+  I = 1;
+  H = 0;
+  ")
+
+sir_dmeas <- Csnippet("
+  lik = dbinom(reports,H,rho,give_log);
+  ")
+
+sir_rmeas <- Csnippet("
+  reports = rbinom(H,rho);
+  ")
+
+meas %>%
+  pomp(times="week",t0=0,
+       rprocess=euler(sir_step,delta.t=1/7),
+       rinit=sir_rinit,
+       rmeasure=sir_rmeas,
+       dmeasure=sir_dmeas,
+       accumvars="H",
+       partrans=parameter_trans(log=c('Beta'), logit=c('rho', 'eta')),
+       statenames=c("S","I","H"),
+       paramnames=c("Beta","mu_IR","N","eta","rho")
+       ) -> measSIR
+
+params <- c(Beta=20, mu_IR=2, rho=0.5, eta=0.1, N=38000)
+
+fixed_params <- c(N=38000, mu_IR=2)
+
+foreach(i=1:10,.combine=c) %dopar% {
+  library(pomp)
+  measSIR %>% pfilter(params=params,Np=10000)
+} -> pf
+
+pf %>% logLik() %>% logmeanexp(se=TRUE) -> L_pf
+L_pf
+
+```
+
+
+
+
+----------
+
+**<big>Question 7.3</big>. This feedback response is worth credit.**
+
+(a) Explain which parts of your responses above made use of a source, meaning anything or anyone you consulted (including your class group, or other classmates, or online solutions to previous courses) to help you write or check your answers. All sources are permitted, but you are expected to explain clearly what is, and is not, your own original contribution, as discussed in the [syllabus](../syllabus.html).
+
+(b) As for homework 6, this homework is conceptually a routine adaptation of existing code, but involves overcoming various technical hurdles. The hurdles may be overcome quite quickly, or could turn into a longer battle. Once you have finished this homework, you are in a position to carry out data analysis for a wide range of POMP models. How long did this homework take? Report on any technical difficulties that arose.
+
+
+---------------
+
+### Acknowledgements
+
+Question 7.2 derives from material in [Simulation-based Inference for Epidemiological Dynamics](http://kingaa.github.io/sbied/index.html).
+
+---------------
+
+
+
+
