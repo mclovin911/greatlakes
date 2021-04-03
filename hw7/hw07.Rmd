@@ -260,7 +260,6 @@ $\beta \in (5, 80), \mu_{EI} \in (0, 5), \rho\in(0.2, 0.9), \eta\in(0, 0.4).$
 We start with points uniformly selected from the possible box.
 We re-run iterative filter from the endpoints from before.
 After all the iterative filters for all the starting points, we use particle filter to evaluate the likelihood.
-The best result of this global search has likelihood -120 with a standard error of 0.65. 
 We can see that the parameter values converges from uniformly distributed boxes to regions with higher likelihood.
 To get a closer look, we can look at each parameter's profile likelihood.
 
@@ -394,9 +393,32 @@ We find the parameter values converges to regions with higher likelihood.
 pairs(~loglik+Beta+mu_EI+eta+rho,data=results,pch=16)
 ```
 
-Then, we plotted the profile likelihood of rho at different values.
+
+
+b) 
+The best result of SEIR we got from the global search has likelihood -120 with a standard error of 0.13.
+From the lecture notes, we find the best likelihood is also -120.
+This closeness of likelihood indicates that there may not be enough evidence to use a more complicated model than SIR.
+However, it is also possible that the best achievable likelihood of SEIR is not reached in our search because of our limited computational power.
+
+c)
+According to the results, we achieve the highest likelihood with the set of parameter values $\beta=18, \mu_{IR}=2, \mu_{EI}=20, \rho=0.2, \eta=0.14, N=38000$. 
+From the pairwise likelihood plot above, we find beta converges to a region between 0 and 50. 
+By the confidence interval from our profile likelihood of eta and rho, we find
+the true value of eta should be within the range 0.1 and 0.3 with 95% probability
+and the true value for rho should be in range 0.1 and 0.4 with 95% probability.
+On the other hand, we know from the lecture notes that for SIR model,
+beta converges to a region around 20,
+the true value of eta should be within the range 0.1 and 0.5 with 95% probability,
+and the true value for rho should be in range 0.1 and 0.3 with 95% probability.
+Thus, we conclude the values of parameter estimates are not significantly different. 
+
+d)
+We plotted the profile likelihood of rho (the reporting rate) at different values.
 By Wilk's theorem, we construct 95% confidence interval again for rho.
 We find the true value for rho should be in range 0.1 and 0.4 with 95% probability.
+We remember from the lecture notes that the true value for rho should be in range 0.1 and 0.3 with 95% probability.
+Thus, we conclude that they are not significantly different.
 
 ```{r}
 results %>%
@@ -412,16 +434,18 @@ results %>%
   )
 ```
 
-According to the results, we achieve the highest likelihood = -120.6 with the set of parameter values $\beta=28.8, \mu_{IR}=1.3, \mu_{EI}=20.8, \rho=0.42, \eta=0.06, N=38000$. 
-
 ----------
 
 **<big>Question 7.3</big>. This feedback response is worth credit.**
 
 (a) Explain which parts of your responses above made use of a source, meaning anything or anyone you consulted (including your class group, or other classmates, or online solutions to previous courses) to help you write or check your answers. All sources are permitted, but you are expected to explain clearly what is, and is not, your own original contribution, as discussed in the [syllabus](../syllabus.html).
 
+I used the lecture notes and the Rscript from King.
+
 (b) As for homework 6, this homework is conceptually a routine adaptation of existing code, but involves overcoming various technical hurdles. The hurdles may be overcome quite quickly, or could turn into a longer battle. Once you have finished this homework, you are in a position to carry out data analysis for a wide range of POMP models. How long did this homework take? Report on any technical difficulties that arose.
 
+This homework takes 4 hours of human work and probably 10 hours of server time.
+I had a hard time to run rmd file from sbatch. It is compiled in the interactive session.
 
 ---------------
 
