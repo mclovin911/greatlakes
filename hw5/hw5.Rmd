@@ -1,0 +1,76 @@
+---
+title: "hw5"
+author: "Xingwen Wei"
+date: "4/1/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**QUestion 1**
+
+First, we can re-write the constraints from the bottom objective function.
+
+$$
+\begin{align}
+y_i(\beta_0+\beta^Tx_i)&\ge1-\zeta_i\\
+y_if(x_i)&\ge1-\zeta_i\\
+\zeta_i&\ge1-y_if(x_i)\\
+\zeta_i&\ge0\\
+\zeta_i&=[1-y_if(x_i)]_+
+\end{align}
+$$
+
+Then, we can plug in this form of constraint of $\zeta_i$ back to objective function and apply a constant multiplication $\frac{1}{C}$ which does not affect the result.
+Finally, realizing the identity that $\lambda=\frac{1}{C}$, we establish the equivalence.
+
+$$
+\begin{align}
+min_{\beta_0, \beta} & \frac{1}{2}||\beta||^2+C\sum_{i=1}^n\zeta_i\\
+min_{\beta_0, \beta} & \frac{1}{2}||\beta||^2+C\sum_{i=1}^n[1-y_if(x_i)]_+\\
+min_{\beta_0, \beta} & \frac{\lambda}{2}||\beta||^2+\sum_{i=1}^n[1-y_if(x_i)]_+\\
+\end{align}
+$$
+
+**Question 2**
+
+```{r}
+set.seed(2021)
+
+# Data Preprocessing
+load('mnist.Rdata')
+x_train <- x_train/255
+x_test <- x_test/255
+
+train_img <- matrix(x_train, dim(x_train)[1], prod(dim(x_train)[2:3]))
+test_img <- matrix(x_test, dim(x_test)[1], prod(dim(x_test)[2:3]))
+
+train_lab <- as.factor(y_train)
+test_lab <- as.factor(y_test)
+
+train_data <- data.frame(train_lab, train_img)
+colnames(train_data)[1] = 'lab'
+test_data <- data.frame(test_lab, test_img)
+colnames(test_data)[1] = 'lab'
+
+# SVM
+
+library(e1071)
+t =tune(svm, lab~., data=train_data, ranges=list(cost=c(0.1,1,10,100), kernel=c("polynomial", "radial")), tunecontrol = tune.control(cross=5))
+pred = predict(t$best.model, newdata=test_data)
+table(pred, test_data$lab)
+sum((pred!=test_data$lab))/dim(test_data)[1]
+
+```
+
+
+
+
+
+
+
+
+
+
