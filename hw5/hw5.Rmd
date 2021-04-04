@@ -36,11 +36,16 @@ $$
 
 **Question 2**
 
+a)
+The test error rate is 0.06 with the best model selected from 5 fold cross validation.
+According to the tuning summary, the model chosen has cost = 100 and radial kernel.
+We find that it is easy to confuse 3 and 5, and 7 and 9 based on the confusion table.
+
 ```{r}
 set.seed(2021)
 
 # Data Preprocessing
-load('mnist.Rdata')
+load("C:/Users/xingw/Desktop/503/stats503/hw5/mnist.RData")
 x_train <- x_train/255
 x_test <- x_test/255
 
@@ -58,12 +63,130 @@ colnames(test_data)[1] = 'lab'
 # SVM
 
 library(e1071)
-t =tune(svm, lab~., data=train_data, ranges=list(cost=c(0.1,1,10,100), kernel=c("polynomial", "radial")), tunecontrol = tune.control(cross=5))
+t =tune(svm, lab~., data=train_data, ranges=list(cost=c(0.1,1,10,100), kernel=c("polynomial", "radial")), tunecontrol = tune.control(cross=5), scale=FALSE)
 pred = predict(t$best.model, newdata=test_data)
+summary(t)
 table(pred, test_data$lab)
 sum((pred!=test_data$lab))/dim(test_data)[1]
 
 ```
+
+
+b)
+
+```{r}
+#install.packages('devtools')
+#devtools::install_github("rstudio/keras")
+#devtools::install_github("rstudio/tensorflow")
+#library(tensorflow)
+#install_tensorflow(version = "1.12")
+#library(keras)
+#install_keras()
+library(keras)
+library(tensorflow)
+
+
+# MLP
+digit_mlp <- keras_model_sequential()
+digit_mlp %>% 
+  layer_flatten(input_shape = c(28, 28)) %>%
+  layer_dense(units = 128, activation='relu') %>%
+  layer_dense(units = 10, activation = 'softmax')
+
+digit_mlp %>% compile(
+  optimizer = 'adam',
+  loss = 'sparse_categorical_crossentropy',
+  metrics = c('accuracy')
+)
+
+train_label = as.matrix(train_lab)
+test_label = as.matrix(test_lab)
+mlp_history = digit_mlp %>% fit(x_train, train_label, epochs = 30, validation_split = 0.3, batch_size = 64)
+
+library(ggplot2)
+plot(mlp_history) + theme_minimal()
+
+mlp_test <- digit_mlp %>% evaluate(x_test, test_label)
+cat('MLP test accuracy: ', mlp_test$acc)
+
+```
+
+
+```{r}
+digit_cnn <- keras_model_sequential()
+digit_cnn %>%
+  layer_conv_2d(filter=32, kernel_size = c(3, 3), padding='same', input_shape=c(28,28,1)) %>%
+  layer_activation('relu') %>%
+  layer_max_pooling_2d(pool_size = c(2,2)) %>%
+  layer_conv_2d(filter=32, kernel_size = c(3, 3)) %>%
+  layer_activation('relu') %>%
+  layer_max_pooling_2d(pool_size = c(2,2)) %>%
+  layer_dropout(0.25) %>%
+  layer_flatten() %>%
+  layer_dense(64) %>%
+  layer_activation('relu') %>%
+  layer_dense(10) %>%
+  layer_activation('softmax')
+
+cnn_train_x = array(x_train, dim = c(dim(x_train)[1], dim(x_train)[2], dim(x_train)[3], 1))
+cnn_test_x = array(x_test, dim=c(dim(x_test)[1], dim(x_test)[2], dim(x_test)[3], 1))
+
+digit_cnn %>% compile(
+  optimizer = 'adam',
+  loss = 'sparse_categorical_crossentropy',
+  metrics = c('accuracy')
+)
+
+cnn_history = digit_cnn %>% fit(cnn_train_x, train_label, epochs=30, validation_split=0.3, batch_size=64)
+plot(cnn_history) + theme_minimal()
+
+cnn_test <- digit_cnn %>% evaluate(cnn_test_x, test_label)
+cat('CNN test accuracy: ', mlp_test$acc)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
