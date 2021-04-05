@@ -42,7 +42,7 @@ We find that it is easy to confuse 3 and 5, and 7 and 9 based on the confusion t
 set.seed(2021)
 
 # Data Preprocessing
-load("C:/Users/xingw/Desktop/503/stats503/hw5/mnist.RData")
+load("~/greatlakes/hw5/mnist.RData")
 x_train <- x_train/255
 x_test <- x_test/255
 
@@ -60,16 +60,19 @@ colnames(test_data)[1] = 'lab'
 
 ```{r, eval=FALSE}
 # SVM
-
 library(e1071)
-t =tune(svm, lab~., data=train_data, ranges=list(cost=c(0.1,1,10,100), kernel=c("polynomial", "radial")), tunecontrol = tune.control(cross=5), scale=FALSE)
-pred = predict(t$best.model, newdata=test_data)
-summary(t)
-table(pred, test_data$lab)
-sum((pred==test_data$lab))/dim(test_data)[1]
-
+t =tune(svm, lab~., data=train_data, ranges=list(cost=c(10,100, 300, 500), kernel=c("polynomial", "radial")), tunecontrol = tune.control(cross=5), scale=FALSE)
+svm_model <- t$best.model
+saveRDS(t$best.model, 'svm_model')
+svm_model <- readRDS('svm_model')
 ```
 
+
+```{r}
+pred = predict(svm_model, newdata=test_data)
+table(pred, test_data$lab)
+sum((pred==test_data$lab))/dim(test_data)[1]
+```
 
 b)
 We used cross validation to select the best model within a handful of candidates, including one layer with 128 neurons and two layers with 36 neurons each and etc. According to the cross validation result, we chose the model with one layer and 128 neurons. Then we use early stopping to prevent overfitting.
