@@ -1,0 +1,394 @@
+---
+title: "STATS 531 Final Project"
+author: "Xingwen Wei, Zilu Wang, LeeYang Lin"
+date: "4/10/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE}
+#package 
+library(tidyverse)
+library(tseries)
+library(knitr)
+library(pomp)
+library(doParallel)
+library(doRNG)
+```
+
+## Introduction
+
+The story of GameStop probably can be considered as one of the most astonishing craziness in the stock market history. GameStop, one of the American brick-and-mortar video games retailer, was widely considered as a outdated and sunset industry. Facing the competition of online shopping platforms like amazon and bestbuy, as well as the end-to-end online installation of videogames, the stockprice of GameStop dropped to around 3 dollars around a year ago. However, such bearish views were certainly not accepted by a group of investors. These investors gathered on the popular social media platform, Reddit, and have their own group name called WallStreetBets. They hold a bullish view on the GameStop shares and they began to short GameStop's stock. This resulted in a exponential increase in GameStop's price.
+
+The story of GameStop was certainly not isolated. There are other stocks talked on the Reddit forum such as AMC, Koss, BlackBerry and Bed Bath&Beyond. Despite many early-informed investors made a great fortune by investing in the GameStop and other WallStreetBets-favored stocks, many other investors and hedge funds lost a lot of money for the dramatic changes of the prices. In this project, we will use stochastic volatility models to analyze the GameStop stock to understand the variance of the returns for quantifying the investment risks and providing guidance for future investments on such stocks.
+
+The dataset comes from yahoo finance, consisting the date, the open price, the high price, low price, close price, adjusted close price and the traded volume for GameStop stock from 2020-04-08 to 2021-04-07. We mainly focused on the daily adjusted close price of this year-long data.
+
+## Exploratory Data Analysis
+
+```{r}
+# read in data
+dat = read.csv("GME.csv")
+head(dat,3)
+```
+
+```{r}
+dat$Date = as.Date(dat$Date, format = "%Y-%m-%d")
+summary(dat[,-1])
+```
+
+As we can see, there is a huge jump of the adjusted close price for the GameStop stock price from 3.41 to 347.51. The daily trade volume also ranges from 1.3 million to 197 million.
+
+
+```{r}
+library(ggplot2)
+
+ggplot(dat, aes(x=Date, y=Adj.Close)) +
+  geom_line() +
+  ggtitle("GameStop Adjusted Stock Price since April 2020") +
+  xlab("Date") +
+  ylab("Close Price")
+```
+
+
+After visualizing the adjusted stock price for GameStop over the past year, we can observe that the fluctuation of the closing prices. Until the January of 2021, the stock price stays low. Beginning around mid-January, the stock price surges to over 300 dollars. Then after whcih the stock price quickly falls below 50 dollars. Then around March 2021, the stock prices rises again.
+
+Then we will explore the log return for the GameStop company. The log return can be defined as:$$R_n=log(y_n)-log(y_{n-1})$$
+
+We further subtract the mean of the log returns to obtain a mean stationary model, which is visualized below.
+
+```{r}
+log_diff = diff(log(dat$Adj.Close))
+demean_price = log_diff-mean(log_diff)
+df = data.frame(xval = c(1:length(log_diff)), log_diff = log_diff)
+df2 = data.frame(xval = c(1:length(demean_price)), demean_price = demean_price)
+
+ggplot(df, aes(x=xval, y=log_diff))+
+  geom_line() +
+  ggtitle("Return for Log Adjusted Close Price") +
+  xlab("Date") +
+  ylab("Log Return")
+
+ggplot(df2, aes(x=xval, y=demean_price)) +
+  geom_line() +
+  geom_hline(yintercept=mean(demean_price), color = "blue", linetype = "dashed") +
+  ggtitle("Demeaned Return for Log Adjusted Close Price") +
+  xlab("Date") +
+  ylab("Demeaned Log Return")
+```
+
+
+
+## The Garch(p,q) Models
+In our analysis, we primarily utilize Garch(1,1) as the baseline model and then try to improve the model by use the Garch(p,q) model. Garch(1,1) takes a simple form that $$Y_n = \epsilon_n\sqrt{V_n}$$ where $$V_n=\alpha_0+\alpha_1Y_{n-1}^2+\beta_1V_{n-1}$$
+
+```{r}
+#Garch model
+# reference from https://ionides.github.io/531w21/16/slides-annotated.pdf
+
+fit.garch <- garch(log_diff,grad = "numerical",trace = FALSE)
+L.garch <- tseries:::logLik.garch(fit.garch)
+fit.garch
+L.garch
+```
+
+In the Garch(1,1) model, the log-likelihood value is 203.4436. In the financial world, people often use Garch(p,q) to model the data. Garch(p,q) takes the following form:
+
+$$Y_n = \epsilon_n\sqrt{V_n}$$ where $$V_n=\alpha_0+\sum^p_{j=1}\alpha_jY_{n-j}^2+\sum_{k=1}^q\beta_kV_{n-k}$$.
+
+```{r}
+# code from project 23
+GARCH_aic = function(data,P,Q){
+  table = matrix(NA,(P),(Q))
+  for(p in 1:P) {
+    for(q in 1:Q) {
+      fit = garch(x = data, order = c(p,q), maxiter = 1000,
+                  grad = "analytical", trace = FALSE)
+      table[p,q] = 2 * length(fit$coef) - 2 * tseries:::logLik.garch(fit)
+    }
+  }
+  dimnames(table) = list(paste("<b> p = ",1:P, "</b>", sep=""),paste("q = ",1:Q,sep=""))
+  table
+}
+aic_table = GARCH_aic(log_diff, 4, 4)
+kable(aic_table, digits=2)
+```
+
+```{r}
+par(mfrow = c(1, 2))
+
+acf(resid(fit.garch)[-1], main = "ACF of GARCH(1,1) residuals")
+
+qqnorm(resid(fit.garch))
+qqline(resid(fit.garch))
+```
+
+As we can see from the ACF plot and Q-Q plot, the residuals are well laid within the confidence interval. Hence it indicates that residuals are uncorrelated at all lags. The Q-Q plot demonstrates the residuals have heavy tails comparing to the normal distribution. Hence the residuals may deviate from the standard normal distribution, and hence may undermine the fitting of the model. We can try other models instead to find a better substitute model.
+
+
+## The Pomp Model
+
+### Fixed Leverage Model
+
+We know that a frequent phenomenon in the financial market that negative shocks to a stockmarket index are associated with a subsequent increase in volatility. We can formally define the leverage $R_n$ on day n as the correlation between index return on day n-1 and the increase in the log volatility from day n-1 to day n (Lecture 16, Slide 12).
+
+We can adopt a pomp implementation of Breto(2014) that models $R_n$ as a random walk on a transformed scale and hence define $R_n = \frac{e^{2Gn}-1}{e^{2Gn}+1}$ where $Gn$ is the usual Gaussian random walk.
+
+When the Gaussian random walk has standard deviation of 0, it can be considered as a special case of the model mentioned above, a fixed leverage model. The pomp model allows the model parameters to vary over time. The parameters are latent random processes. Under the construction of Breto's work(2014), the model is constructed as follows:
+
+$$Y_n=e^{\frac{H_n}{2}}\epsilon_n$$
+$$H_n = \mu_h(1-\phi)+\phi H_{n-1}+\beta_{n-1}R_ne^{\frac{-H_{n-1}}{2}}+\omega_n$$
+$$G_n = G_{n-1}+\nu_n$$
+$$\beta_n = Y_n\sigma_\eta\sqrt{1-\phi^2}$$
+$$\epsilon_n \sim i.i.d N(0,1)$$
+$$\nu_n \sim i.i.d N(0,\sigma^2_\nu)$$
+$$\omega_n \sim N(0, \sigma^2_{\omega,n})$$ where $\sigma^2_{\omega, n} = \sigma^2_\eta(1-\phi^2)(1-R_n^2)$.
+
+We have $H_n$ as the log-golatility, $X_n=(G_n, H_n, Y_n)$ as the state variable, $Y_n$ as the measurement variable being perfect observation of this component of $X_n$.
+
+```{r}
+## Building a POMP model
+
+GME_statenames <- c("H","G","Y_state")
+GME_rp_names <- c("sigma_nu","mu_h","phi","sigma_eta")
+GME_ivp_names <- c("G_0","H_0")
+GME_paramnames <- c(GME_rp_names,GME_ivp_names)
+
+rproc1 <- "
+double beta,omega,nu;
+omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) *
+sqrt(1-tanh(G)*tanh(G)));
+nu = rnorm(0, sigma_nu);
+G += nu;
+beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+H = mu_h*(1 - phi) + phi*H + beta * tanh( G )
+* exp(-H/2) + omega;
+"
+rproc2.sim <- "
+Y_state = rnorm( 0,exp(H/2) );
+"
+rproc2.filt <- "
+Y_state = covaryt;
+"
+GME_rproc.sim <- paste(rproc1,rproc2.sim)
+GME_rproc.filt <- paste(rproc1,rproc2.filt)
+
+GME_rinit <- "
+G = G_0;
+H = H_0;
+Y_state = rnorm( 0,exp(H/2) );
+"
+
+GME_rmeasure <- "
+y=Y_state;
+"
+
+GME_dmeasure <- "
+lik=dnorm(y,0,exp(H/2),give_log);
+"
+
+GME_partrans <- parameter_trans(
+log=c("sigma_eta","sigma_nu"),
+logit="phi"
+)
+```
+
+```{r}
+#simulate with an arbitrary parameters
+
+GME.filt <- pomp(data=data.frame(
+y=demean_price,time=1:length(demean_price)),
+statenames=GME_statenames,
+paramnames=GME_paramnames,
+times="time",
+t0=0,
+covar=covariate_table(
+time=0:length(demean_price),
+covaryt=c(0,demean_price),
+times="time"),
+rmeasure=Csnippet(GME_rmeasure),
+dmeasure=Csnippet(GME_dmeasure),
+rprocess=discrete_time(step.fun=Csnippet(GME_rproc.filt),
+delta.t=1),
+rinit=Csnippet(GME_rinit),
+partrans=GME_partrans
+)
+```
+
+```{r}
+params_test <- c(
+sigma_nu = exp(-4.5),
+mu_h = -0.25,
+phi = expit(4),
+sigma_eta = exp(-0.07),
+G_0 = 0,
+H_0=0
+)
+
+sim1.sim <- pomp(GME.filt,
+statenames=GME_statenames,
+paramnames=GME_paramnames,
+rprocess=discrete_time(
+step.fun=Csnippet(GME_rproc.sim),delta.t=1)
+)
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+```
+
+```{r}
+sim1.filt <- pomp(sim1.sim,
+covar=covariate_table(
+time=c(timezero(sim1.sim),time(sim1.sim)),
+covaryt=c(obs(sim1.sim),NA),
+times="time"),
+statenames=GME_statenames,
+paramnames=GME_paramnames,
+rprocess=discrete_time(
+step.fun=Csnippet(GME_rproc.filt),delta.t=1)
+)
+```
+
+## Filtering on simulated data
+```{r}
+run_level <- 3
+GME_Np <- switch(run_level, 100, 1e3, 2e3)
+GME_Nmif <- switch(run_level, 10, 100, 200)
+GME_Nreps_eval <- switch(run_level, 4, 10, 20)
+GME_Nreps_local <- switch(run_level, 10, 20, 20)
+GME_Nreps_global <- switch(run_level, 10, 20, 100)
+```
+
+```{r}
+registerDoParallel()
+registerDoRNG(34118892)
+
+stew(file=sprintf("pf1-%d.rda",run_level),{
+t.pf1 <- system.time(
+pf1 <- foreach(i=1:GME_Nreps_eval,
+.packages='pomp') %dopar% pfilter(sim1.filt,Np=GME_Np))
+})
+(L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE))
+```
+
+## Fitting the stochastic leverage model 
+```{r}
+GME_rw.sd_rp <- 0.02
+GME_rw.sd_ivp <- 0.1
+GME_cooling.fraction.50 <- 0.5
+GME_rw.sd <- rw.sd(
+sigma_nu = GME_rw.sd_rp,
+mu_h = GME_rw.sd_rp,
+phi = GME_rw.sd_rp,
+sigma_eta = GME_rw.sd_rp,
+G_0 = ivp(GME_rw.sd_ivp),
+H_0 = ivp(GME_rw.sd_ivp)
+)
+
+stew(file=sprintf("mif1-%d.rda",run_level),{
+t.if1 <- system.time({
+if1 <- foreach(i=1:GME_Nreps_local,
+.packages='pomp', .combine=c) %dopar% mif2(GME.filt,
+params=params_test,
+Np=GME_Np,
+Nmif=GME_Nmif,
+cooling.fraction.50=GME_cooling.fraction.50,
+rw.sd = GME_rw.sd)
+L.if1 <- foreach(i=1:GME_Nreps_local,
+.packages='pomp', .combine=rbind) %dopar% logmeanexp(
+replicate(GME_Nreps_eval, logLik(pfilter(GME.filt,
+params=coef(if1[[i]]),Np=GME_Np))), se=TRUE)
+})
+})
+```
+
+```{r}
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],
+                    t(sapply(if1,coef)))
+if (run_level>1) write.table(r.if1,file="GME_params.csv",
+                             append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.if1$logLik,digits=5)
+```
+
+From here, we can see that the maximum log-likelohood value of the pomp model takes the value of 239.8. It is a slight improvement compare to what we had in the Garch model, 203.4436. considering the number of parameters within the two models, we consider their performance as similar.
+
+```{r}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,
+data=subset(r.if1,logLik>max(logLik)-20))
+```
+## diagnostic
+```{r}
+plot(if1)
+```
+
+As demonstrated above, the convergence diagnostics of the pomp model is plotted. We can see from the MIF2 convergence plot that the log-likelihood quickly converges within 50 iterations. The $\sigma_\nu$ seems to converge within 100 iterations, the $\phi$ seems to converge within 150 iterations, $G_0$ seems to converge to an interval after 150 iterations, and for $\mu_h$ and $H_0$, they seem not converge.
+
+To address the non-convergence problem and obtain an optimization, we will use randomized starting values from a large box in the pomp model to obtain a global maximization.
+
+## Likelihood maximization using randomized starting values
+
+```{r}
+GME_box <- rbind(
+sigma_nu=c(0.005,0.05),
+mu_h =c(-1,0),
+phi = c(0.95,0.99),
+sigma_eta = c(0.5,1),
+G_0 = c(-2,2),
+H_0 = c(-1,1)
+)
+
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+t.box <- system.time({
+if.box <- foreach(i=1:GME_Nreps_global,
+.packages='pomp',.combine=c) %dopar% mif2(if1[[1]],
+params=apply(GME_box,1,function(x)runif(1,x)))
+
+L.box <- foreach(i=1:GME_Nreps_global,
+.packages='pomp',.combine=rbind) %dopar% {
+logmeanexp(replicate(GME_Nreps_eval, logLik(pfilter(
+GME.filt,params=coef(if.box[[i]]),Np=GME_Np))),
+se=TRUE)}
+})
+})
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],
+t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.box,file="GME_params.csv",
+append=TRUE,col.names=FALSE,row.names=FALSE)
+
+summary(r.box$logLik,digits=5)
+```
+
+```{r}
+pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0,
+data=subset(r.box,logLik>max(logLik)-10))
+```
+
+## diagnostic
+```{r}
+plot(if.box)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
